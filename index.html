@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Der Reader</title>
+<script src="https://res.cdn.office.net/teams-js/2.22.0/js/MicrosoftTeams.min.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --panel-2: #1c212a; --line: #262c37;
+    --text: #e8ebf0; --muted: #8a93a3; --accent: #ff7a45; --accent-soft: rgba(255,122,69,.14);
+    --unread: #ff7a45; --radius: 10px;
+    font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  :root.light {
+    --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --line: #e2e5ea;
+    --text: #1a1d23; --muted: #667085; --accent-soft: rgba(255,122,69,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  button, input { font: inherit; color: inherit; }
+  .app { display: grid; grid-template-columns: 240px 360px 1fr; height: 100vh; }
+  aside, .list { border-right: 1px solid var(--line); overflow-y: auto; }
+  aside { background: var(--panel); padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; font-weight: 650; font-size: 17px; letter-spacing: -.2px; }
+  .brand .dot { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; }
+  .feed { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; border: 0; background: none; text-align: left; width: 100%; }
+  .feed:hover { background: var(--panel-2); }
+  .feed.active { background: var(--accent-soft); color: var(--accent); }
+  .feed .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  .feed .count { font-size: 12px; color: var(--muted); }
+  .feed .x { visibility: hidden; color: var(--muted); padding: 0 2px; }
+  .feed:hover .x { visibility: visible; }
+  .section { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); padding: 14px 10px 6px; }
+  .add { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .add input { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; }
+  .add input:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 6px; }
+  .btn { flex: 1; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 7px 10px; font-size: 13px; cursor: pointer; }
+  .btn.ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  .list { background: var(--bg); }
+  .list-head { position: sticky; top: 0; background: var(--bg); padding: 14px 16px 10px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; z-index: 1; }
+  .list-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
+  .icon-btn { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; padding: 4px 6px; border-radius: 6px; }
+  .icon-btn:hover { background: var(--panel-2); color: var(--text); }
+  .item { padding: 12px 16px; border-bottom: 1px solid var(--line); cursor: pointer; position: relative; }
+  .item:hover { background: var(--panel); }
+  .item.active { background: var(--panel-2); }
+  .item.unread::before { content: ""; position: absolute; left: 6px; top: 18px; width: 6px; height: 6px; border-radius: 50%; background: var(--unread); }
+  .item .src { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .item .t { font-size: 14px; font-weight: 600; line-height: 1.35; }
+  .item:not(.unread) .t { font-weight: 450; color: var(--muted); }
+  .item .s { font-size: 13px; color: var(--muted); margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  main { overflow-y: auto; }
+  article { max-width: 720px; margin: 0 auto; padding: 36px 40px 80px; }
+  article .meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  article h1 { font-size: 28px; line-height: 1.2; margin: 0 0 18px; letter-spacing: -.4px; }
+  article .body { font-size: 16.5px; line-height: 1.65; }
+  article .body img, article .body video, article .body iframe { max-width: 100%; height: auto; border-radius: 8px; }
+  article .body a { color: var(--accent); }
+  article .open { display: inline-block; margin-top: 24px; color: var(--accent); text-decoration: none; font-weight: 600; }
+  .empty { height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 40px; }
+  .status { font-size: 12px; color: var(--muted); padding: 10px 16px; }
+  .err { color: #f97066; }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    aside { display: none; }
+    .app.reading .list { display: none; }
+    .app:not(.reading) main { display: none; }
+    .back { display: inline-block !important; }
+  }
+  .back { display: none; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside>
+    <div class="brand"><div class="dot">D</div>Der Reader</div>
+    <button class="feed active" data-id="__all"><span class="name">All articles</span><span class="count" id="count-all"></span></button>
+    <button class="feed" data-id="__unread"><span class="name">Unread</span><span class="count" id="count-unread"></span></button>
+    <div class="section">Feeds</div>
+    <div id="feeds"></div>
+    <div class="add">
+      <input id="feed-url" placeholder="Add feed URL…" autocomplete="off">
+      <div class="row">
+        <button class="btn" id="add-btn">Add</button>
+        <button class="btn ghost" id="opml-btn" title="Import an OPML export">Import OPML</button>
+      </div>
+      <input type="file" id="opml-file" accept=".opml,.xml,text/xml" hidden>
+    </div>
+  </aside>
+  <section class="list">
+    <div class="list-head">
+      <h2 id="list-title">All articles</h2>
+      <div>
+        <button class="icon-btn" id="mark-read" title="Mark all as read">Mark all read</button>
+        <button class="icon-btn" id="refresh" title="Refresh">↻</button>
+      </div>
+    </div>
+    <div id="status" class="status"></div>
+    <div id="items"></div>
+  </section>
+  <main id="reader"><div class="empty">Pick an article to start reading.</div></main>
+</div>
+
+<script>
+(() => {
+  const DEFAULT_FEEDS = [
+    { url: "https://www.theverge.com/rss/index.xml", title: "The Verge" },
+    { url: "https://feeds.arstechnica.com/arstechnica/index", title: "Ars Technica" },
+    { url: "https://devblogs.microsoft.com/microsoft365dev/feed/", title: "Microsoft 365 Developer Blog" }
+  ];
+  const PROXIES = [
+    u => u,
+    u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+    u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u)
+  ];
+
+  // ---- storage (Teams tabs can throw on storage in some clients) ----
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("der." + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("der." + k, JSON.stringify(v)); } catch {} }
+  };
+  let feeds = store.get("feeds", DEFAULT_FEEDS);
+  let readSet = new Set(store.get("read", []));
+  let articles = [];               // {id, feedUrl, feedTitle, title, link, date, html, summary}
+  let view = "__all", current = null;
+
+  const $ = s => document.querySelector(s);
+  const esc = s => (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const text = html => { const d = document.createElement("div"); d.innerHTML = html || ""; return (d.textContent || "").trim(); };
+  const ago = d => {
+    if (!d || isNaN(d)) return "";
+    const m = Math.round((Date.now() - d) / 60000);
+    if (m < 60) return m + "m"; if (m < 1440) return Math.round(m / 60) + "h";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  // ---- Teams theme ----
+  function applyTheme(t) { document.documentElement.classList.toggle("light", t === "default"); }
+  try {
+    if (window.microsoftTeams) {
+      microsoftTeams.app.initialize().then(() => {
+        microsoftTeams.app.getContext().then(ctx => applyTheme(ctx.app && ctx.app.theme));
+        microsoftTeams.app.registerOnThemeChangeHandler(applyTheme);
+      }).catch(() => {});
+    }
+  } catch {}
+
+  // ---- sanitising article HTML ----
+  function clean(html, base) {
+    const doc = new DOMParser().parseFromString(html || "", "text/html");
+    doc.querySelectorAll("script,style,form,object,embed,link,meta").forEach(n => n.remove());
+    doc.querySelectorAll("*").forEach(el => {
+      [...el.attributes].forEach(a => {
+        const n = a.name.toLowerCase();
+        if (n.startsWith("on") || (n === "href" || n === "src") && /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name);
+      });
+      if (el.tagName === "A") { el.target = "_blank"; el.rel = "noopener"; }
+      if (el.tagName === "IMG") el.loading = "lazy";
+      ["href", "src"].forEach(attr => {
+        const v = el.getAttribute(attr);
+        if (v && base) try { el.setAttribute(attr, new URL(v, base).href); } catch {}
+      });
+    });
+    return doc.body.innerHTML;
+  }
+
+  // ---- fetching & parsing ----
+  async function fetchText(url) {
+    let lastErr;
+    for (const p of PROXIES) {
+      try {
+        const r = await fetch(p(url), { cache: "no-store" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const t = await r.text();
+        if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(t)) throw new Error("Not a feed");
+        return t;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  function parseFeed(xml, feed) {
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    const pick = (el, ...names) => { for (const n of names) { const x = el.getElementsByTagName(n)[0]; if (x && x.textContent.trim()) return x; } return null; };
+    const channelTitle = (pick(doc.documentElement, "title") || {}).textContent;
+    if (channelTitle && !feed.customTitle) feed.title = channelTitle.trim();
+    const entries = [...doc.getElementsByTagName("item"), ...doc.getElementsByTagName("entry")];
+    return entries.slice(0, 40).map(e => {
+      let link = "";
+      const links = [...e.getElementsByTagName("link")];
+      const alt = links.find(l => !l.getAttribute("rel") || l.getAttribute("rel") === "alternate");
+      if (alt) link = alt.getAttribute("href") || alt.textContent.trim();
+      const body = pick(e, "content:encoded", "content", "description", "summary");
+      const html = body ? body.textContent : "";
+      const dateEl = pick(e, "pubDate", "published", "updated", "dc:date");
+      const id = (pick(e, "guid", "id") || {}).textContent || link || (pick(e, "title") || {}).textContent;
+      return {
+        id: feed.url + "|" + id, feedUrl: feed.url, feedTitle: feed.title,
+        title: text((pick(e, "title") || {}).textContent) || "(untitled)",
+        link, date: dateEl ? new Date(dateEl.textContent.trim()) : null,
+        html, summary: text(html).slice(0, 220)
+      };
+    });
+  }
+
+  async function refresh() {
+    $("#status").textContent = "Refreshing " + feeds.length + " feeds…";
+    $("#status").className = "status";
+    const failed = [];
+    const results = await Promise.all(feeds.map(async f => {
+      try { return parseFeed(await fetchText(f.url), f); }
+      catch { failed.push(f.title || f.url); return []; }
+    }));
+    store.set("feeds", feeds);
+    articles = results.flat().sort((a, b) => (b.date || 0) - (a.date || 0));
+    $("#status").textContent = failed.length ? "Couldn't load: " + failed.join(", ") : "";
+    $("#status").className = failed.length ? "status err" : "status";
+    render();
+  }
+
+  // ---- rendering ----
+  function visible() {
+    if (view === "__all") return articles;
+    if (view === "__unread") return articles.filter(a => !readSet.has(a.id));
+    return articles.filter(a => a.feedUrl === view);
+  }
+
+  function render() {
+    const unreadBy = {};
+    articles.forEach(a => { if (!readSet.has(a.id)) unreadBy[a.feedUrl] = (unreadBy[a.feedUrl] || 0) + 1; });
+    const totalUnread = Object.values(unreadBy).reduce((s, n) => s + n, 0);
+    $("#count-all").textContent = articles.length || "";
+    $("#count-unread").textContent = totalUnread || "";
+
+    $("#feeds").innerHTML = feeds.map(f => `
+      <button class="feed ${view === f.url ? "active" : ""}" data-id="${esc(f.url)}">
+        <span class="name">${esc(f.title || f.url)}</span>
+        <span class="count">${unreadBy[f.url] || ""}</span>
+        <span class="x" data-remove="${esc(f.url)}" title="Remove feed">✕</span>
+      </button>`).join("");
+    document.querySelectorAll(".feed[data-id='__all'], .feed[data-id='__unread']")
+      .forEach(b => b.classList.toggle("active", b.dataset.id === view));
+
+    const titles = { __all: "All articles", __unread: "Unread" };
+    $("#list-title").textContent = titles[view] || (feeds.find(f => f.url === view) || {}).title || "Feed";
+
+    const list = visible();
+    $("#items").innerHTML = list.length ? list.map(a => `
+      <div class="item ${readSet.has(a.id) ? "" : "unread"} ${current && current.id === a.id ? "active" : ""}" data-id="${esc(a.id)}">
+        <div class="src"><span>${esc(a.feedTitle)}</span><span>${ago(a.date)}</span></div>
+        <div class="t">${esc(a.title)}</div>
+        <div class="s">${esc(a.summary)}</div>
+      </div>`).join("") : `<div class="empty">Nothing here yet.</div>`;
+  }
+
+  function open(a) {
+    current = a;
+    readSet.add(a.id); store.set("read", [...readSet].slice(-3000));
+    $("#reader").innerHTML = `
+      <article>
+        <button class="icon-btn back" id="back">← Back</button>
+        <div class="meta">${esc(a.feedTitle)}${a.date && !isNaN(a.date) ? " · " + a.date.toLocaleString() : ""}</div>
+        <h1>${esc(a.title)}</h1>
+        <div class="body">${clean(a.html, a.link)}</div>
+        ${a.link ? `<a class="open" href="${esc(a.link)}" target="_blank" rel="noopener">Open original →</a>` : ""}
+      </article>`;
+    $("#reader").scrollTop = 0;
+    $("#app").classList.add("reading");
+    render();
+  }
+
+  // ---- events ----
+  document.addEventListener("click", e => {
+    const rm = e.target.closest("[data-remove]");
+    if (rm) {
+      e.stopPropagation();
+      feeds = feeds.filter(f => f.url !== rm.dataset.remove);
+      articles = articles.filter(a => a.feedUrl !== rm.dataset.remove);
+      if (view === rm.dataset.remove) view = "__all";
+      store.set("feeds", feeds); render(); return;
+    }
+    const feedBtn = e.target.closest(".feed");
+    if (feedBtn) { view = feedBtn.dataset.id; $("#app").classList.remove("reading"); render(); return; }
+    const item = e.target.closest(".item");
+    if (item) { const a = articles.find(x => x.id === item.dataset.id); if (a) open(a); return; }
+    if (e.target.id === "back") $("#app").classList.remove("reading");
+  });
+
+  async function addFeed(url) {
+    url = url.trim(); if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    if (feeds.some(f => f.url === url)) return;
+    feeds.push({ url, title: url });
+    view = url; await refresh();
+  }
+  $("#add-btn").onclick = () => { addFeed($("#feed-url").value); $("#feed-url").value = ""; };
+  $("#feed-url").onkeydown = e => { if (e.key === "Enter") $("#add-btn").click(); };
+  $("#refresh").onclick = refresh;
+  $("#mark-read").onclick = () => { visible().forEach(a => readSet.add(a.id)); store.set("read", [...readSet].slice(-3000)); render(); };
+  $("#opml-btn").onclick = () => $("#opml-file").click();
+  $("#opml-file").onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const doc = new DOMParser().parseFromString(await file.text(), "text/xml");
+    let added = 0;
+    doc.querySelectorAll("outline[xmlUrl]").forEach(o => {
+      const url = o.getAttribute("xmlUrl");
+      if (!feeds.some(f => f.url === url)) { feeds.push({ url, title: o.getAttribute("title") || o.getAttribute("text") || url, customTitle: true }); added++; }
+    });
+    e.target.value = "";
+    if (added) refresh();
+  };
+
+  render();
+  refresh();
+})();
+</script>
+</body>
+</html>
